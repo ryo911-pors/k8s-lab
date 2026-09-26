@@ -1,0 +1,13 @@
+# 私物・学習メモ（公開しない）
+LEARNING.md
+CLAUDE.md
+GOAL.md
+
+# Terraform: state にはアカウント情報や全リソースの詳細が入る
+*.tfstate
+*.tfstate.*
+.terraform/
+crash.log
+
+# macOS
+.DS_Store

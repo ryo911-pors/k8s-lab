@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: vllm
+  template:
+    metadata:
+      labels:
+        app: vllm
+
+    spec:
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:v0.30.0
+        command: ["vllm", "serve"]
+        args: ["Qwen/Qwen2.5-0.5B-Instruct"]
+        ports:
+        - containerPort: 8000
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 5
+        resources:
+          limits:
+            nvidia.com/gpu: 1
