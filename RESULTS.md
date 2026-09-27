@@ -28,6 +28,8 @@ EKS の GPU ノードで vLLM を動かした実験結果。実験ごとに追�
 - readinessProbe が無いと、vLLM がモデルを読み込み中でも `READY 1/1` になる（約1分以上のずれ）。`/health` を probe にすると準備完了まで READY にならない。
 - GPU 1枚でローリングアップデートすると、新しい Pod が `Insufficient nvidia.com/gpu` で Pending のまま進まない。`strategy: Recreate` が必要（代わりに入れ替え中は止まる）。
 - `replicas: 2` にしても2台目は Pending。GPU クォータ 4 vCPU = g5.xlarge 1台が天井。
+- Service を `vllm` という名前で Pod より先に作ると、K8s が `VLLM_PORT=tcp://<ClusterIP>:80` を Pod に自動注入し（service links）、vLLM が `ValueError: VLLM_PORT ... appears to be a URI` で起動失敗する。Pod を先に作った初回は再現しなかった（作る順番で結果が変わる）。`enableServiceLinks: false` で解消。
+- NVIDIA device plugin は Terraform の `helm_release` で入れる。`terraform apply` 1回で GPU が `allocatable: 1` になるところまで揃う。
 
 ## 2. 同時リクエスト数とスループット
 

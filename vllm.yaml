@@ -15,6 +15,8 @@ spec:
         app: vllm
 
     spec:
+      # Service "vllm" があると K8s が VLLM_PORT=tcp://... を自動で入れ、vLLM の設定と衝突する
+      enableServiceLinks: false
       containers:
       - name: vllm
         image: vllm/vllm-openai:v0.30.0
