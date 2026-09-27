@@ -4,6 +4,12 @@ terraform {
       source = "hashicorp/aws"
       version = "~> 6.0"
     }
+
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 3.0"
+    }
+
   }
   backend "s3" {
     bucket       = "ryo-tfstate-321604617840"
@@ -15,6 +21,18 @@ terraform {
 
 provider "aws" {
   region = "us-east-1"
+}
+
+provider "helm" {
+  kubernetes = {
+    host                   = aws_eks_cluster.main.endpoint
+    cluster_ca_certificate = base64decode(aws_eks_cluster.main.certificate_authority[0].data)
+    exec = {
+      api_version = "client.authentication.k8s.io/v1beta1"
+      command     = "aws"
+      args        = ["eks", "get-token", "--cluster-name", aws_eks_cluster.main.name, "--region", "us-east-1"]
+    }
+  }
 }
 
 # state 置き場の S3 バケット（ryo-tfstate-321604617840）は ../bootstrap で管理する。
@@ -181,4 +199,16 @@ resource "aws_eks_node_group" "gpu" {
     aws_route_table_association.a,
     aws_route_table_association.b,
   ]
+}
+
+
+resource "helm_release" "nvdp" {
+  name             = "nvdp"
+  repository       = "https://nvidia.github.io/k8s-device-plugin"
+  chart            = "nvidia-device-plugin"
+  version          = "0.20.1"
+  namespace        = "gpu-operator"
+  create_namespace = true
+
+  depends_on       = [aws_eks_node_group.gpu]
 }
