@@ -155,6 +155,7 @@ resource "aws_eks_node_group" "cpu" {
   node_role_arn   = aws_iam_role.node.arn
   subnet_ids      = [aws_subnet.a.id, aws_subnet.b.id]
   instance_types  = ["t3.medium"]
+  disk_size       = 50 # 負荷用 Pod で vLLM イメージ（8.7GB）を使うため。20GB だと Evicted になった
 
   scaling_config {
     desired_size = 2

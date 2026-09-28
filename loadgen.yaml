@@ -1,5 +1,5 @@
 # 負荷をかける側。vLLM の Pod と CPU を取り合わないよう、CPU ノードで別に動かす。
-# vLLM のイメージ（8.7GB）は CPU ノードのディスク（20GB）に入りきらず Evicted になったので、軽い Python イメージ + 自作スクリプト（loadgen.py）にした
+# vllm bench serve を使うため vLLM のイメージ（8.7GB）を載せる。CPU ノードのディスクは 50GB 必要（20GB だと Evicted になった）
 apiVersion: v1
 kind: Pod
 metadata:
@@ -10,8 +10,8 @@ spec:
     eks.amazonaws.com/nodegroup: cpu
   containers:
   - name: loadgen
-    image: python:3.12-slim
-    command: ["sh", "-c", "pip install -q aiohttp && sleep infinity"]
+    image: vllm/vllm-openai:v0.30.0
+    command: ["sleep", "infinity"]
     resources:
       requests:
         cpu: "1"
