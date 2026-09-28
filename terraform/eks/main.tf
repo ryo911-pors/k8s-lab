@@ -181,7 +181,7 @@ resource "aws_eks_node_group" "gpu" {
   scaling_config {
     desired_size = 1
     min_size     = 0
-    max_size     = 1
+    max_size     = 2
   }
 
   labels = {  #this node has GPU
@@ -199,7 +199,13 @@ resource "aws_eks_node_group" "gpu" {
     aws_route_table_association.a,
     aws_route_table_association.b,
   ]
+
+  lifecycle {
+    ignore_changes = [scaling_config[0].desired_size]
+  }
 }
+
+   
 
 
 resource "helm_release" "nvdp" {
@@ -212,3 +218,80 @@ resource "helm_release" "nvdp" {
 
   depends_on       = [aws_eks_node_group.gpu]
 }
+
+resource "aws_eks_addon" "pod_identity" {
+  cluster_name = aws_eks_cluster.main.name
+  addon_name   = "eks-pod-identity-agent"
+}
+
+resource "aws_iam_role" "cluster_autoscaler" {
+  name = "vllm-lab-cluster-autoscaler"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "pods.eks.amazonaws.com" }
+      Action    = ["sts:AssumeRole", "sts:TagSession"]
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "cluster_autoscaler" {
+  name = "cluster-autoscaler"
+  role = aws_iam_role.cluster_autoscaler.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "autoscaling:DescribeAutoScalingGroups",
+        "autoscaling:DescribeAutoScalingInstances",
+        "autoscaling:DescribeLaunchConfigurations",
+        "autoscaling:DescribeScalingActivities",
+        "autoscaling:DescribeTags",
+        "autoscaling:SetDesiredCapacity",
+        "autoscaling:TerminateInstanceInAutoScalingGroup",
+        "ec2:DescribeImages",
+        "ec2:DescribeInstanceTypes",
+        "ec2:DescribeLaunchTemplateVersions",
+        "ec2:GetInstanceTypesFromInstanceRequirements",
+        "eks:DescribeNodegroup",
+      ]
+      Resource = "*"
+    }]
+  })
+}
+
+resource "aws_eks_pod_identity_association" "cluster_autoscaler" {
+  cluster_name    = aws_eks_cluster.main.name
+  namespace       = "kube-system"
+  service_account = "cluster-autoscaler"
+  role_arn        = aws_iam_role.cluster_autoscaler.arn
+}
+
+
+resource "helm_release" "cluster_autoscaler" {
+  name       = "cluster-autoscaler"
+  repository = "https://kubernetes.github.io/autoscaler"
+  chart      = "cluster-autoscaler"
+  version    = "9.59.0"
+  namespace  = "kube-system"
+
+  values = [yamlencode({
+    autoDiscovery = { clusterName = aws_eks_cluster.main.name }
+    awsRegion     = "us-east-1"
+    image         = { tag = "v1.36.1" }
+    rbac = {
+      serviceAccount = { name = "cluster-autoscaler" }
+    }
+  })]
+
+  depends_on = [
+    aws_eks_pod_identity_association.cluster_autoscaler,
+    aws_eks_addon.pod_identity,
+    aws_eks_node_group.cpu,
+  ]
+}
+
+
+
