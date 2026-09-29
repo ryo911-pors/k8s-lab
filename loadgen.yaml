@@ -1,17 +1,34 @@
 # 負荷をかける側。vLLM の Pod と CPU を取り合わないよう、CPU ノードで別に動かす。
 # vllm bench serve を使うため vLLM のイメージ（8.7GB）を載せる。CPU ノードのディスクは 50GB 必要（20GB だと Evicted になった）
-apiVersion: v1
-kind: Pod
+# 2台を podAntiAffinity で別々の CPU ノードに分ける（送る側の CPU が天井になっていないかを確かめるため）
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: loadgen
 spec:
-  enableServiceLinks: false
-  nodeSelector:
-    eks.amazonaws.com/nodegroup: cpu
-  containers:
-  - name: loadgen
-    image: vllm/vllm-openai:v0.30.0
-    command: ["sleep", "infinity"]
-    resources:
-      requests:
-        cpu: "1"
+  replicas: 2
+  selector:
+    matchLabels:
+      app: loadgen
+  template:
+    metadata:
+      labels:
+        app: loadgen
+    spec:
+      enableServiceLinks: false
+      nodeSelector:
+        eks.amazonaws.com/nodegroup: cpu
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: loadgen
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: loadgen
+        image: vllm/vllm-openai:v0.30.0
+        command: ["sleep", "infinity"]
+        resources:
+          requests:
+            cpu: "1"
