@@ -168,6 +168,54 @@ resource "aws_eks_node_group" "cpu" {
     aws_route_table_association.a,
     aws_route_table_association.b,
   ]
+
+  lifecycle {
+    ignore_changes = [scaling_config[0].desired_size]
+  }
+}
+
+# イメージ pull はディスク書込が gp3 標準の 125MiB/s に張り付いて遅かった。
+# g5.xlarge の EBS 帯域の上限は 437.5MB/s なので、それに近い 400MiB/s まで上げる。
+resource "aws_launch_template" "gpu" {
+  name = "vllm-lab-gpu"
+
+  user_data = base64encode(<<-EOT
+    MIME-Version: 1.0
+    Content-Type: multipart/mixed; boundary="BOUNDARY"
+
+    --BOUNDARY
+    Content-Type: application/node.eks.aws
+
+    apiVersion: node.eks.aws/v1alpha1
+    kind: NodeConfig
+    spec:
+      containerd:
+        config: |
+          [plugins.'io.containerd.transfer.v1.local']
+          max_concurrent_downloads = 4
+          concurrent_layer_fetch_buffer = 67108864
+
+          # 上の transfer 側の設定だけでは、大きいレイヤーが分割されなかった（pull 時間が変わらず）。
+          # CRI の pull を古い窓口（ローカル pull）に切り替え、そこに分割の設定を渡す
+          [plugins.'io.containerd.cri.v1.images']
+          use_local_image_pull = true
+          max_concurrent_downloads = 4
+          concurrent_layer_fetch_buffer = 67108864
+
+    --BOUNDARY--
+  EOT
+  )
+
+  block_device_mappings {
+    device_name = "/dev/xvda"
+    ebs {
+      volume_size           = 100
+      volume_type           = "gp3"
+      iops                  = 3000
+      throughput            = 400
+      delete_on_termination = true
+    }
+  }
 }
 
 resource "aws_eks_node_group" "gpu" {
@@ -177,10 +225,14 @@ resource "aws_eks_node_group" "gpu" {
   subnet_ids      = [aws_subnet.a.id, aws_subnet.b.id]
   instance_types  = ["g5.xlarge"]
   ami_type        = "AL2023_x86_64_NVIDIA"
-  disk_size       = 100
+
+  launch_template {
+    id      = aws_launch_template.gpu.id
+    version = aws_launch_template.gpu.latest_version
+  }
 
   scaling_config {
-    desired_size = 1
+    desired_size = 0 # 最初は0台。vLLM を置くと CA が 0→1 に増やす
     min_size     = 0
     max_size     = 2
   }

@@ -1,0 +1,36 @@
+# イメージ pull 中のノード全体のネットワーク・CPU・ディスクを1秒ごとに記録する見張り役。
+# GPU ノードが生まれた瞬間に自動で1つ置かれるよう DaemonSet にしている。
+# 記録スクリプトは ConfigMap pullmon（mon.awk）から読む。先に作っておく:
+#   kubectl create configmap pullmon --from-file=mon.awk
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: pullmon
+spec:
+  selector:
+    matchLabels:
+      app: pullmon
+  template:
+    metadata:
+      labels:
+        app: pullmon
+    spec:
+      hostNetwork: true # ノードの NIC の受信量を見るため
+      hostPID: true     # ノードの全プロセス（containerd など）のスレッドごとの CPU を見るため
+      nodeSelector:
+        nvidia.com/gpu: "true"
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: mon
+        image: busybox:1.36
+        command: ["awk", "-f", "/mon/mon.awk"]
+        volumeMounts:
+        - name: script
+          mountPath: /mon
+      volumes:
+      - name: script
+        configMap:
+          name: pullmon
