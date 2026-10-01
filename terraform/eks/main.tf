@@ -239,6 +239,7 @@ resource "aws_eks_node_group" "gpu" {
 
   labels = {  #this node has GPU
     "nvidia.com/gpu" = "true"
+    "k8s.amazonaws.com/accelerator" = "nvidia-a10g"
   }
 
   taint {  #pods which doesn't use GPU cannot enter the node
